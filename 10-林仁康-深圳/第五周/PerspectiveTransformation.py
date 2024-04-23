@@ -44,8 +44,7 @@ class MyImg:
             self.A[i * 2] = [srcX, srcY, 1, 0, 0, 0, -srcX * dstX, -srcY * dstX]
             self.A[i * 2 + 1] = [0, 0, 0, srcX, srcY, 1, -srcX * dstY, -srcY * dstY]
             self.B[i * 2] = dstX
-            self.B[i + 2 + 1] = dstY
-
+            self.B[i * 2 + 1] = dstY
         self.A = np.mat(self.A)
         self.B = np.mat(self.B)
 
@@ -55,12 +54,6 @@ class MyImg:
         self.T = np.array(self.A.I * self.B).T[0]
         self.T = np.insert(self.T, self.T.shape[0], values=1, axis=0)
         self.T = self.T.reshape((3, 3))
-
-        # 正确 T 矩阵
-        # self.T = np.array([[-5.01338334e-01, -1.35357643e+00,5.82386716e+02],
-        #  [2.27373675e-16,-4.84035391e+00,1.38781980e+03],
-        #  [-0.00000000e+00,-4.14856327e-03,1.00000000e+00]])
-
 
     # 设置目标图像大小
     def _SetSize(self, h, w):
@@ -72,40 +65,42 @@ class MyImg:
     def _GetNewPoint(self, x, y):
         inputM = np.mat([x, y, 1])[0].T
         inputM = np.mat(inputM)
-        print("inputM: ", inputM)
-        print("T: ", self.T)
         outputM = self.T * inputM
         outputM = np.array(outputM).T[0]
         xNew = outputM[0]
         yNew = outputM[1]
         zNew = outputM[2]
-        print("outputM: ", outputM)
-        print("outputM0: ", int(xNew / zNew))
-        print("outputM1: ", int(yNew / zNew))
-        # assert 0
         return int(xNew / zNew), int(yNew / zNew)
 
     def _ExpectHandle(self, x, y):
         x = x if x > 0 else 0
         y = y if y > 0 else 0
 
-        x = x if x < self.dstW else self.dstW - 1
-        y = y if y < self.dstH else self.dstH - 1
+        x = x if x < self.dstH else self.dstH - 1
+        y = y if y < self.dstW else self.dstW - 1
 
         return x, y
+
+    def _IsExpectVal(self, x, y):
+        if x < 0 or x >= self.dstH:
+            return True
+        if y < 0 or y >= self.dstW:
+            return True
+
+        return False
 
     # 输出图片
     def _ShowPic(self, img):
         print("Picture: ", img)
         print("Shape: ", img.shape)
-        cv2.imshow("Picture", img)
+        cv2.imshow("Picture", img.astype(np.uint8))
         cv2.waitKey(0)
 
     # 输出图片
     def _ShowPicName(self, img, name):
         print("Picture: " + name, img)
         print("Shape: ", img.shape)
-        cv2.imshow("Picture: " + name, img)
+        cv2.imshow("Picture: " + name, img.astype(np.uint8))
         cv2.waitKey(0)
 
     # 输出直方图与合并图片
@@ -121,11 +116,9 @@ class MyImg:
         dst = np.float32(dst)
         self._SetAB(src, dst)
         self._SetT()
-        # print("PerTransformDetail T: ", self.T)
-        # PerTransformDetail T: [[2.36411251e+00  9.98180836e-01 - 6.40096595e+02]
-        #     [-4.95340812e-01  1.14593770e+00 - 7.05010445e+01]
-        #     [2.85547407e-03 3.34475690e-04 1.00000000e+00]]
         self._Check(src, dst)
+        print("PerTransformDetail T: ", self.T)
+
 
     def _Check(self, src, dst):
         print("check src: ", src)
@@ -141,11 +134,34 @@ class MyImg:
     def WarpPerspectiveDetail(self, dstH, dstW):
         h, w = self.img.shape[:2]
         self._SetSize(dstH, dstW)
-        for y in range(h):
-            for x in range(w):
+        self.chImg = np.zeros((dstH, dstW, self.img.shape[2]))
+        # 累计计算为同一点坐标
+        pointCnt = np.zeros((dstH, dstW))
+
+        # 对原图像计算
+        for x in range(h):
+            for y in range(w):
                 xNew, yNew = self._GetNewPoint(x, y)
-                xNew, yNew = self._ExpectHandle(xNew, yNew)
-                self.chImg[yNew, xNew] = self.img[y, x]
+                # 丢弃越界的点
+                if self._IsExpectVal(xNew, yNew):
+                    continue
+                # 处理越界的点
+                # xNew, yNew = self._ExpectHandle(xNew, yNew)
+                # 移动坐标
+                self.chImg[xNew, yNew] = self.chImg[xNew, yNew] + self.img[x, y]
+                pointCnt[xNew, yNew] += 1
+                # debug
+                if (x == 207 and y == 151) or (x == 517 and y == 285) or (x == 17 and y == 601) or (
+                        x == 343 and y == 731):
+                    print("warp [", x, " ", y, "]->[", xNew, ",", yNew, "]", " pixel: ", self.img[x, y],
+                          self.chImg[xNew, yNew])
+
+        # 多个对应点取平均值
+        for x in range(dstH):
+            for y in range(dstW):
+                if pointCnt[x, y] > 1:
+                    self.chImg[x, y] = self.chImg[x, y] / pointCnt[x, y]
+
 
     # 训练透视变换函数
     def PerTransform(self, src, dst):
@@ -173,17 +189,19 @@ class MyImg:
 if __name__ == "__main__":
     myImg = MyImg('pic/photo1.jpg')
     # 输出原图
-    # myImg.ShowSrcImg()
+    myImg.ShowSrcImg()
+    print("img: [207, 151]", myImg.img[207, 151])
 
     # 设置源目地址
-    src = [[10.0, 457.0], [395.0, 291.0], [624.0, 291.0], [1000.0, 457.0]]
-    dst = [[46.0, 920.0], [46.0, 100.0], [600.0, 100.0], [600.0, 920.0]]
+    # src = [[10.0, 457.0], [395.0, 291.0], [624.0, 291.0], [1000.0, 457.0]]
+    # dst = [[46.0, 920.0], [46.0, 100.0], [600.0, 100.0], [600.0, 920.0]]
 
-    # src = [[207, 151], [517, 285], [17, 601], [343, 731]]
-    # dst = [[0, 0], [337, 0], [0, 488], [337, 488]]
+    src = [[207, 151], [517, 285], [17, 601], [343, 731]]
+    dst = [[0, 0], [337, 0], [0, 488], [337, 488]]
     myImg.PerTransformDetail(src, dst)
-    # myImg.WarpPerspectiveDetail(500, 500)
+    myImg.WarpPerspectiveDetail(500, 500)
+    myImg.ShowDstImg()
 
-    # myImg.PerTransform(src, dst)
-    # myImg.WarpPerspective(500, 500)
-    # myImg.ShowDstImg()
+    myImg.PerTransform(src, dst)
+    myImg.WarpPerspective(500, 500)
+    myImg.ShowDstImg()
