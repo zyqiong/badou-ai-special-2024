@@ -50,10 +50,9 @@ class MyImg:
 
     # 根据 A 和 B 矩阵，计算 T
     def _SetT(self):
-        tmp = self.A.I * self.B
         self.T = np.array(self.A.I * self.B).T[0]
         self.T = np.insert(self.T, self.T.shape[0], values=1, axis=0)
-        self.T = self.T.reshape((3, 3))
+        self.T = np.mat(self.T.reshape((3, 3)))
 
     # 设置目标图像大小
     def _SetSize(self, h, w):
@@ -61,33 +60,70 @@ class MyImg:
         self.dstW = w
         self.chImg = np.zeros((h, w, self.img.shape[2]))
 
-    # 获取新的坐标
-    def _GetNewPoint(self, x, y):
+    # 获取目标坐标
+    def _GetDstPoint(self, x, y):
         inputM = np.mat([x, y, 1])[0].T
-        inputM = np.mat(inputM)
-        outputM = self.T * inputM
-        outputM = np.array(outputM).T[0]
-        xNew = outputM[0]
-        yNew = outputM[1]
-        zNew = outputM[2]
-        return int(xNew / zNew), int(yNew / zNew)
+        outputM = np.array(self.T * inputM).T[0]
+        xNew, yNew, zNew = outputM[0], outputM[1], outputM[2]
+        return round(xNew / zNew), round(yNew / zNew)
 
-    def _ExpectHandle(self, x, y):
+    # 获取源坐标
+    def _GetSrcPoint(self, x, y):
+        inputM = np.mat([x, y, 1])[0].T
+        outputM = np.array(self.T.I * inputM).T[0]
+        xNew, yNew, zNew = outputM[0], outputM[1], outputM[2]
+        return round(xNew / zNew), round(yNew / zNew)
+
+    # 越界处理
+    def _ExpectHandle(self, x, y, h=0, w=0):
+        if h == 0:
+            h = self.dstH
+        if w == 0:
+            w = self.dstW
+
         x = x if x > 0 else 0
         y = y if y > 0 else 0
 
-        x = x if x < self.dstH else self.dstH - 1
-        y = y if y < self.dstW else self.dstW - 1
+        x = x if x < w else w - 1
+        y = y if y < h else h - 1
 
         return x, y
 
-    def _IsExpectVal(self, x, y):
-        if x < 0 or x >= self.dstH:
+    # 识别越界处理
+    def _IsExpectVal(self, x, y, h=0, w=0):
+        if h == 0:
+            h = self.dstH
+        if w == 0:
+            w = self.dstW
+
+        if x < 0 or x >= w:
             return True
-        if y < 0 or y >= self.dstW:
+        if y < 0 or y >= h:
             return True
 
         return False
+
+    # 验算目的坐标
+    def _DstCheck(self, src, dst):
+        print("src: ", src)
+        dstTmp = np.zeros(src.shape)
+        for i in range(src.shape[0]):
+            x, y = src[i, 0], src[i, 1]
+            xNew, yNew = self._GetDstPoint(x, y)
+            dstTmp[i, 0], dstTmp[i, 1] = xNew, yNew
+        print("Check dstTmp: ", dstTmp)
+        print("Check dst: ", dst)
+
+    # 验算源坐标
+    def _SrcCheck(self, src, dst):
+        print("dst: ", dst)
+        srcTmp = np.zeros(src.shape)
+        for i in range(dst.shape[0]):
+            x, y = dst[i, 0], dst[i, 1]
+            xNew, yNew = self._GetSrcPoint(x, y)
+            srcTmp[i, 0], srcTmp[i, 1] = xNew, yNew
+        print("Check srcTmp: ", srcTmp)
+        print("Check src: ", src)
 
     # 输出图片
     def _ShowPic(self, img):
@@ -116,22 +152,12 @@ class MyImg:
         dst = np.float32(dst)
         self._SetAB(src, dst)
         self._SetT()
-        self._Check(src, dst)
+        self._DstCheck(src, dst)
+        self._SrcCheck(src, dst)
         print("PerTransformDetail T: ", self.T)
 
-
-    def _Check(self, src, dst):
-        print("check src: ", src)
-        dstTmp = np.zeros(src.shape)
-        for i in range(src.shape[0]):
-            x, y = src[i, 0], src[i, 1]
-            xNew, yNew = self._GetNewPoint(x, y)
-            dstTmp[i, 0], dstTmp[i, 1] = xNew, yNew
-        print("Check dstTmp: ", dstTmp)
-        print("Check dst: ", dst)
-
-    # 根据训练的 T 进行透视变换
-    def WarpPerspectiveDetail(self, dstH, dstW):
+    # 根据训练的 T 进行透视变换(正向计算)
+    def WarpPerspectiveDetailForward(self, dstH, dstW):
         h, w = self.img.shape[:2]
         self._SetSize(dstH, dstW)
         self.chImg = np.zeros((dstH, dstW, self.img.shape[2]))
@@ -139,28 +165,34 @@ class MyImg:
         pointCnt = np.zeros((dstH, dstW))
 
         # 对原图像计算
-        for x in range(h):
-            for y in range(w):
-                xNew, yNew = self._GetNewPoint(x, y)
+        for y in range(h):
+            for x in range(w):
+                xNew, yNew = self._GetDstPoint(x, y)
                 # 丢弃越界的点
                 if self._IsExpectVal(xNew, yNew):
                     continue
                 # 处理越界的点
                 # xNew, yNew = self._ExpectHandle(xNew, yNew)
                 # 移动坐标
-                self.chImg[xNew, yNew] = self.chImg[xNew, yNew] + self.img[x, y]
-                pointCnt[xNew, yNew] += 1
-                # debug
-                if (x == 207 and y == 151) or (x == 517 and y == 285) or (x == 17 and y == 601) or (
-                        x == 343 and y == 731):
-                    print("warp [", x, " ", y, "]->[", xNew, ",", yNew, "]", " pixel: ", self.img[x, y],
-                          self.chImg[xNew, yNew])
+                self.chImg[yNew, xNew] = self.chImg[yNew, xNew] + self.img[y, x]
+                pointCnt[yNew, xNew] += 1
 
-        # 多个对应点取平均值
-        for x in range(dstH):
-            for y in range(dstW):
-                if pointCnt[x, y] > 1:
-                    self.chImg[x, y] = self.chImg[x, y] / pointCnt[x, y]
+    # 根据训练的 T 进行透视变换（逆向计算）
+    def WarpPerspectiveDetailReverse(self, dstH, dstW):
+        h, w = self.img.shape[:2]
+        self._SetSize(dstH, dstW)
+        self.chImg = np.zeros((dstH, dstW, self.img.shape[2]))
+
+        # 对原图像计算
+        for yNew in range(dstH):
+            for xNew in range(dstW):
+                x, y = self._GetSrcPoint(xNew, yNew)
+                # 丢弃越界的点
+                if self._IsExpectVal(x, y, h, w):
+                    continue
+                # 移动坐标
+                # print("x, y, xNew, yNew", x, y, xNew, yNew)
+                self.chImg[yNew, xNew] = self.img[y, x]
 
 
     # 训练透视变换函数
@@ -179,7 +211,6 @@ class MyImg:
 
     # 输出转换后的图像（彩色图）
     def ShowDstImg(self):
-        # self._ShowMergePic(self.img, self.chImg)
         self._ShowPic(self.chImg)
 
 '''
@@ -199,9 +230,16 @@ if __name__ == "__main__":
     src = [[207, 151], [517, 285], [17, 601], [343, 731]]
     dst = [[0, 0], [337, 0], [0, 488], [337, 488]]
     myImg.PerTransformDetail(src, dst)
-    myImg.WarpPerspectiveDetail(500, 500)
+
+    # 正向计算透视变换
+    myImg.WarpPerspectiveDetailForward(500, 500)
     myImg.ShowDstImg()
 
+    # 逆向计算透视变换
+    myImg.WarpPerspectiveDetailReverse(500, 500)
+    myImg.ShowDstImg()
+
+    # 使用 cv2 进行透视变换
     myImg.PerTransform(src, dst)
     myImg.WarpPerspective(500, 500)
     myImg.ShowDstImg()
