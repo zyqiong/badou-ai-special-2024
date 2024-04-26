@@ -177,6 +177,12 @@ class MyImg:
                 self.chImg[yNew, xNew] = self.chImg[yNew, xNew] + self.img[y, x]
                 pointCnt[yNew, xNew] += 1
 
+        # 多个对应点取平均值
+        for y in range(dstH):
+            for x in range(dstW):
+                if pointCnt[y, x] > 1:
+                    self.chImg[y, x] = self.chImg[y, x] / pointCnt[y, x]
+
     # 根据训练的 T 进行透视变换（逆向计算）
     def WarpPerspectiveDetailReverse(self, dstH, dstW):
         h, w = self.img.shape[:2]
