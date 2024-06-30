@@ -3,15 +3,15 @@ import tensorflow as tf
 from tensorflow.keras.datasets import mnist
 
 # 标准化和重塑输入节点数据
-def _XReshape(xTainList):
-    return xTainList.reshape(xTainList.shape[0], xTainList.shape[1] * xTainList.shape[2]).astype('float32') / 255
+def _XReshape(x):
+    return x.reshape(x.shape[0], x.shape[1] * x.shape[2]).astype('float32') / 255 * 0.99 + 0.01
 
 # 标准化标签数据
-def _YReshape(yTainList, categories):
-    n = len(yTainList)
+def _YReshape(y, categories):
+    n = len(y)
     outList = np.zeros((n, categories)) + 0.01
     for i in range(n):
-        outList[i][yTainList[i]] = 1
+        outList[i][y[i]] = 0.99
     return outList
 
 # 计算分类
@@ -46,45 +46,60 @@ class TFNet:
         self.outM = tf.placeholder("float", shape=(outCnt, None))
 
         # 初始化权重/偏置(权重在[-0.5, 0.5))
-        weightIH = tf.Variable(tf.random_normal((hideCnt, inCnt)))
-        weightHO = tf.Variable(tf.random_normal((outCnt, hideCnt)))
-        biasIH = tf.Variable(tf.random_normal((hideCnt, 1)))
-        biasHO = tf.Variable(tf.random_normal((outCnt, 1)))
+        weightIH = tf.Variable(tf.random.uniform((hideCnt, inCnt), minval=-1, maxval=1, dtype=tf.float32))
+        weightHO = tf.Variable(tf.random.uniform((outCnt, hideCnt), minval=-1, maxval=1, dtype=tf.float32))
+        biasIH = tf.Variable(tf.random.uniform((hideCnt, 1), minval=-1, maxval=1, dtype=tf.float32))
+        biasHO = tf.Variable(tf.random.uniform((outCnt, 1), minval=-1, maxval=1, dtype=tf.float32))
 
         # 初始化学习率
         rate = learningRate
 
         # 设置计算图
         # 正向传播
-        hdOutM = tf.nn.sigmoid(tf.matmul(weightIH, self.inM) + biasIH)
-        self.modelForward = tf.nn.sigmoid(tf.matmul(weightHO, hdOutM) + biasHO)
+        hdInM = tf.matmul(weightIH, self.inM) + biasIH
+        hdOutM = tf.nn.sigmoid(hdInM)
+        finalInM = tf.matmul(weightHO, hdOutM) + biasHO
+        self.modelForward = tf.nn.sigmoid(finalInM)
 
         # 反向传播
         crossEntropy = tf.reduce_mean(tf.square(self.outM - self.modelForward))
         self.modelBackward = tf.train.GradientDescentOptimizer(rate).minimize(crossEntropy)
 
-    # 导出函数
+    # 按批训练
+    def _TrainByBatch(self, inM, outM, size):
+        for i in range(size):
+            X = np.array(inM[i], ndmin=2).astype("float32").T
+            Y = np.array(outM[i], ndmin=2).astype("float32").T
+            self.sess.run(self.modelBackward, feed_dict={self.inM: X, self.outM: Y})
+        # yPred = self.Predict(inM)
+        # yPred = _ToCategories(yPred)
+        # yTest = _ToCategories(outM)
+        # print("train acc: ", _CheckPredAcc(yPred, yTest))
+
+    # -------- 导出函数 ---------
     # 训练
     def Train(self, xTrainList, yTrainList, epochs, batchSize):
+        # 初始化
         init = tf.initialize_all_variables()
         self.sess = tf.Session()
         self.sess.run(init)
-
         total = len(xTrainList)
+
+        # 开始训练
         for i in range(epochs):
             batch = 0
             while batch < total:
-                inM = np.array(xTrainList[batch:batch + batchSize], ndmin=2).astype("float32").T
-                outM = np.array(yTrainList[batch:batch + batchSize], ndmin=2).astype("float32").T
-
-                self.sess.run(self.modelBackward, feed_dict={self.inM: inM, self.outM: outM})
-                batch += batchSize
-                # print("batch", batch, "/", total)
-            yPred = self.Predict(xTrainList)
-            yPred = _ToCategories(yPred)
-            yTest = _ToCategories(yTrainList)
-            print("epoch", i, "/", epochs)
-            print("train acc: ", _CheckPredAcc(yPred, yTest))
+                size = batchSize if batch + batchSize < total else total - batch
+                inM = xTrainList[batch:batch + size]
+                outM = yTrainList[batch:batch + size]
+                batch += size
+                self._TrainByBatch(inM, outM, size)
+                print("batch", batch, "/", total)
+            # yPred = self.Predict(xTrainList)
+            # yPred = _ToCategories(yPred)
+            # yTest = _ToCategories(yTrainList)
+            # print("train epochs acc: ", _CheckPredAcc(yPred, yTest))
+            print("epoch", i + 1, "/", epochs)
 
     # 预测
     def Predict(self, xTrainList):
@@ -102,7 +117,7 @@ if __name__ == "__main__":
     # 训练数据
     x = _XReshape(xTrain)
     y = _YReshape(yTrain, 10)
-    myModel.Train(x, y, 100, 128)
+    myModel.Train(x, y, 5, 128)
 
     # 推理预测
     x = _XReshape(xTest)
