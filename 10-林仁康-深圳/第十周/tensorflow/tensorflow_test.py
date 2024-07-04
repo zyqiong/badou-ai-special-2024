@@ -46,10 +46,10 @@ class TFNet:
         self.outM = tf.placeholder("float", shape=(outCnt, None))
 
         # 初始化权重/偏置(权重在[-0.5, 0.5))
-        weightIH = tf.Variable(tf.random.uniform((hideCnt, inCnt), minval=-1, maxval=1, dtype=tf.float32))
-        weightHO = tf.Variable(tf.random.uniform((outCnt, hideCnt), minval=-1, maxval=1, dtype=tf.float32))
-        biasIH = tf.Variable(tf.random.uniform((hideCnt, 1), minval=-1, maxval=1, dtype=tf.float32))
-        biasHO = tf.Variable(tf.random.uniform((outCnt, 1), minval=-1, maxval=1, dtype=tf.float32))
+        weightIH = tf.Variable(tf.random.uniform((hideCnt, inCnt), minval=-0.5, maxval=0.5, dtype=tf.float32))
+        weightHO = tf.Variable(tf.random.uniform((outCnt, hideCnt), minval=-0.5, maxval=0.5, dtype=tf.float32))
+        biasIH = tf.Variable(tf.random.uniform((hideCnt, 1), minval=-0.5, maxval=0.5, dtype=tf.float32))
+        biasHO = tf.Variable(tf.random.uniform((outCnt, 1), minval=-0.5, maxval=0.5, dtype=tf.float32))
 
         # 初始化学习率
         rate = learningRate
