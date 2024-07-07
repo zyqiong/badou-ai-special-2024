@@ -117,9 +117,9 @@ if __name__ == "__main__":
 
     myModel = Model()
     batchSize = 128
-    trainBum = int(len(lines) / 128)
-    testNum = int(len(linesTest) / 128)
+    trainBum = int(len(lines) / batchSize)
+    testNum = int(len(linesTest) / batchSize)
     myModel.Train(r".\data\dataset.txt", r".\data\image\train",
                   r".\data\dataset_test.txt", r".\data\image\train_test",
                   1e-3, 5, batchSize, trainBum, testNum)
-    myModel.Predict(r"Test.jpg")
+    myModel.Predict(r".\data\Test.jpg")
