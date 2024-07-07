@@ -26,32 +26,33 @@ class Model:
 
     # 遍历函数
     def _Iterator(self, namePath, imgPath, batchSize):
-        cnt = 0
-        with open(namePath) as f:
-            i, x, y = 0, [], []
-            for line in f:
-                name = line.split(';')[0]
-                lable = line.split(';')[1]
+        while True:
+            cnt = 0
+            with open(namePath) as f:
+                i, x, y = 0, [], []
+                for line in f:
+                    name = line.split(';')[0]
+                    lable = line.split(';')[1]
 
-                img = cv2.imread(imgPath + '/' + name)
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                img = img / 255
-                x.append(img)
-                y.append(lable)
+                    img = cv2.imread(imgPath + '/' + name)
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                    img = img / 255
+                    x.append(img)
+                    y.append(lable)
 
-                cnt += 1
-                i = (i + 1) % batchSize
-                if i == 0:
-                    yield self._InitData(x, y)
-                    x.clear()
-                    y.clear()
-            yield self._InitData(x, y)
-            x.clear()
-            y.clear()
+                    cnt += 1
+                    i = (i + 1) % batchSize
+                    if i == 0:
+                        yield self._InitData(x, y)
+                        x.clear()
+                        y.clear()
+                yield self._InitData(x, y)
+                x.clear()
+                y.clear()
 
     # 导出函数
     # 训练
-    def Train(self, namePath, imgPath, rate, epoches, batchSize, trainNum, testNum=None):
+    def Train(self, namePath, imgPath, testNamePath, testImgPath, rate, epoches, batchSize, trainNum, testNum):
         print('with batch size {}.'.format(batchSize))
         self.net = network.network().net
 
@@ -86,6 +87,8 @@ class Model:
         # 开始训练
         self.net.fit_generator(self._Iterator(namePath, imgPath, batchSize),
                                steps_per_epoch=max(1, trainNum),
+                               validation_data=self._Iterator(testNamePath, testImgPath, batchSize),
+                               validation_steps=max(1, testNum),
                                epochs=epoches,
                                initial_epoch=0,
                                callbacks=[checkpoint_period1, reduce_lr])
@@ -109,7 +112,14 @@ class Model:
 if __name__ == "__main__":
     with open(r".\data\dataset.txt", "r") as f:
         lines = f.readlines()
+    with open(r".\data\dataset_test.txt", "r") as f:
+        linesTest = f.readlines()
 
     myModel = Model()
-    myModel.Train(r".\data\dataset.txt", r".\data\image\train", 1e-3, 50, 128, len(lines) / 128)
+    batchSize = 128
+    trainBum = int(len(lines) / 128)
+    testNum = int(len(linesTest) / 128)
+    myModel.Train(r".\data\dataset.txt", r".\data\image\train",
+                  r".\data\dataset_test.txt", r".\data\image\train_test",
+                  1e-3, 5, batchSize, trainBum, testNum)
     myModel.Predict(r"Test.jpg")
