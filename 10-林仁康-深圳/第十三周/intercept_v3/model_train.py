@@ -2,27 +2,19 @@
 @author linrenkang
 基于 keras Alex 神经网络
 '''
-import tensorflow as tf
 import keras.optimizers
 from keras.backend.tensorflow_backend import set_session
 from keras import backend as K
 import numpy as np
 from keras.callbacks import ModelCheckpoint, ReduceLROnPlateau, EarlyStopping
-from keras.utils import multi_gpu_model
 from tensorflow.python.client import device_lib
-
 import network
 import utils
 import cv2
 import os
 
-
-import pyopencl as cl
-import pyopencl.tools
-import pyopencl.array
 from keras.backend.tensorflow_backend import set_session
 import tensorflow as tf
-# from rl.callbacks import OpenCLDeviceCallback
 
 class Model:
     network = None
@@ -66,6 +58,7 @@ class Model:
                 y.clear()
 
     def _InitGPU(self):
+
         os.environ["KERAS_BACKEND"] = "plaidml.keras.backend"
         os.environ["CL_GPUOFFSET"] = "1"
 
@@ -74,6 +67,9 @@ class Model:
         tf_config.gpu_options.allow_growth = True
         sess = tf.Session(config=tf_config)
         set_session(sess)
+
+        # 创建回调以在训练过程中使用OpenCL设备
+        # callbacks = [OpenCLDeviceCallback(queue)]
 
         os.environ["CUDA_VISIBLD_DEVICES"] = "0"
 
@@ -142,7 +138,7 @@ class Model:
                                callbacks=[checkpoint_period1, reduce_lr])
 
         # 保存权重值
-        # self.network.net.save_weights(self.LOG_DIR + 'last1.h5')
+        self.network.net.save_weights(self.LOG_DIR + 'last1.h5')
 
     # 推理预测
     def Predict(self, imgPath):
@@ -167,7 +163,7 @@ if __name__ == "__main__":
         linesTest = f.readlines()
 
     myModel = Model()
-    batchSize = 5
+    batchSize = 128
     trainBum = int(len(lines) / batchSize)
     testNum = int(len(linesTest) / batchSize)
     myModel.Train(trainNamePath, trainImgPath, testNameTestPath, trainImgTestPath,
