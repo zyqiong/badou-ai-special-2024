@@ -1,6 +1,6 @@
 '''
 @author linrenkang
-基于 keras Alex 神经网络
+基于 keras 训练神经网络
 '''
 import tensorflow as tf
 import keras.optimizers

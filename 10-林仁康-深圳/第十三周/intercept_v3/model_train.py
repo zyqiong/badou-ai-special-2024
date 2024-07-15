@@ -1,6 +1,6 @@
 '''
 @author linrenkang
-基于 keras Alex 神经网络
+基于 keras 训练神经网络
 '''
 import keras.optimizers
 from keras.backend.tensorflow_backend import set_session
