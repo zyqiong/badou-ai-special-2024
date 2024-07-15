@@ -26,9 +26,9 @@ class Model:
 
     # 处理数据
     def _InitData(self, x, y):
-        x = utils.ResizeImage(x, (network.INPUT_SHAPE[0], network.INPUT_SHAPE[1]))
-        x = x.reshape(-1, network.INPUT_SHAPE[0], network.INPUT_SHAPE[1], network.INPUT_SHAPE[2])
-        y = keras.utils.to_categorical(np.array(y), num_classes=2)
+        x = utils.ResizeImage(x, (utils.INPUT_SHAPE[0], utils.INPUT_SHAPE[1]))
+        x = x.reshape(-1, utils.INPUT_SHAPE[0], utils.INPUT_SHAPE[1], utils.INPUT_SHAPE[2])
+        y = keras.utils.to_categorical(np.array(y), num_classes=utils.OUTPUT_SHAPE)
         return x, y
 
     # 遍历函数
@@ -163,7 +163,7 @@ if __name__ == "__main__":
         linesTest = f.readlines()
 
     myModel = Model()
-    batchSize = 128
+    batchSize = 50
     trainBum = int(len(lines) / batchSize)
     testNum = int(len(linesTest) / batchSize)
     myModel.Train(trainNamePath, trainImgPath, testNameTestPath, trainImgTestPath,

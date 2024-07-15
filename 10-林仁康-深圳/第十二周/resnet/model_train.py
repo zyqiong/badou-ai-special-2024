@@ -167,5 +167,5 @@ if __name__ == "__main__":
     trainBum = int(len(lines) / batchSize)
     testNum = int(len(linesTest) / batchSize)
     myModel.Train(trainNamePath, trainImgPath, testNameTestPath, trainImgTestPath,
-                  1e-3, 5, batchSize, trainBum, testNum)
+                  1e-3, 50, batchSize, trainBum, testNum)
     myModel.Predict(testImg)

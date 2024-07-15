@@ -1,12 +1,10 @@
 import keras
 from keras import layers, Input
 from keras.models import Sequential
-from keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, Dropout, AveragePooling2D, ZeroPadding2D, Softmax
+from keras.layers import Dense, Conv2D, MaxPooling2D, Flatten, AveragePooling2D, ZeroPadding2D, Softmax
 from keras.layers import Activation,BatchNormalization
 from keras.models import Model
-
-INPUT_SHAPE = (224,224,3)
-OUTPUT_SHAPE = 2
+import utils
 
 class DebugInfo:
     stage = 0
@@ -19,7 +17,7 @@ class DebugInfo:
 class Network:
     net = None
 
-    # 横向学习
+    # 卷积
     def _Conv2D(self, input, filter, kernel, step, debugInfo):
         name = 'conv' + str(debugInfo.stage) + '_branch' + debugInfo.block
         bnName = 'bn' + str(debugInfo.stage) + '_branch' + debugInfo.block
@@ -216,7 +214,7 @@ class Network:
     def __init__(self):
         self.net = Sequential()
         # # 初始化
-        inputEle = Input(shape=INPUT_SHAPE)
+        inputEle = Input(shape=utils.INPUT_SHAPE)
         res = ZeroPadding2D((3, 3))(inputEle)
 
         # 1. size = 299 * 299 * 3, kernel= 3 * 3, step = 2
@@ -251,7 +249,7 @@ class Network:
         res = MaxPooling2D((8, 8), 1, padding='SAME')(res)
         # 12. 全连接 FC: size = 1 * 1 * 类别数量
         res = Flatten()(res)
-        res = Dense(OUTPUT_SHAPE, activation='relu', name="FC")(res)
+        res = Dense(utils.OUTPUT_SHAPE, activation='relu', name="FC")(res)
         # 13. softmax：1 * 1 * 类别数量
         res = Softmax(name="Softmax")(res)
 
