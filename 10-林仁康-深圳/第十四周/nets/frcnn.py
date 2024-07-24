@@ -1,4 +1,4 @@
-from nets.resnet import ResNet50,classifier_layers
+from nets.resnet import ResNet50, classifier_layers
 from keras.layers import Conv2D,Input,TimeDistributed,Flatten,Dense,Reshape
 from keras.models import Model
 from nets.RoiPoolingConv import RoiPoolingConv
@@ -16,7 +16,7 @@ def get_classifier(base_layers, input_rois, num_rois, nb_classes=21, trainable=F
     pooling_regions = 14
     input_shape = (num_rois, 14, 14, 1024)
     out_roi_pool = RoiPoolingConv(pooling_regions, num_rois)([base_layers, input_rois])
-    out = classifier_layers(out_roi_pool, input_shape=input_shape, trainable=True)
+    out = classifier_layers(out_roi_pool, input_shape, trainable)
     out = TimeDistributed(Flatten())(out)
     out_class = TimeDistributed(Dense(nb_classes, activation='softmax', kernel_initializer='zero'), name='dense_class_{}'.format(nb_classes))(out)
     out_regr = TimeDistributed(Dense(4 * (nb_classes-1), activation='linear', kernel_initializer='zero'), name='dense_regress_{}'.format(nb_classes))(out)

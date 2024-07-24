@@ -1,133 +1,115 @@
-#-------------------------------------------------------------#
-#   ResNet50的网络部分
-#-------------------------------------------------------------#
-from __future__ import print_function
-
-import numpy as np
-from keras import layers
-
-from keras.layers import Input
-from keras.layers import Dense,Conv2D,BatchNormalization,MaxPooling2D,ZeroPadding2D,AveragePooling2D,TimeDistributed,Add
-from keras.layers import Activation,Flatten
-from keras.models import Model
-
-from keras.preprocessing import image
-import keras.backend as K
-from keras.utils.data_utils import get_file
-from keras.applications.imagenet_utils import decode_predictions
-from keras.applications.imagenet_utils import preprocess_input
-from keras.engine import Layer, InputSpec
-from keras import initializers, regularizers
+from keras import layers, Input
+from keras.layers import Conv2D, MaxPooling2D, ZeroPadding2D, TimeDistributed, AveragePooling2D, Add
+from keras.layers import Activation,BatchNormalization
 from keras import backend as K
 
-def identity_block(input_tensor, kernel_size, filters, stage, block):
+INPUT_SHAPE = (600, 600, 3)
+OUTPUT_SHAPE = 2
 
-    filters1, filters2, filters3 = filters
+class DebugInfo:
+    stage = 0
+    block = None
 
-    conv_name_base = 'res' + str(stage) + block + '_branch'
-    bn_name_base = 'bn' + str(stage) + block + '_branch'
+    def __init__(self, stage, block):
+        self.stage = stage
+        self.block = block
 
-    x = Conv2D(filters1, (1, 1), name=conv_name_base + '2a')(input_tensor)
-    x = BatchNormalization(name=bn_name_base + '2a')(x)
-    x = Activation('relu')(x)
+# 横向学习
+def _ConvBlock(input, filter, step, debugInfo):
+    name = 'conv' + str(debugInfo.stage) + '_branch' + debugInfo.block
+    bnName = 'bn' + str(debugInfo.stage) + '_branch' + debugInfo.block
 
-    x = Conv2D(filters2, kernel_size,padding='same', name=conv_name_base + '2b')(x)
-    x = BatchNormalization(name=bn_name_base + '2b')(x)
-    x = Activation('relu')(x)
+    res1 = Conv2D(filter, (1, 1), strides=step, padding='SAME', name=name+'a')(input)
+    res1 = BatchNormalization(name=bnName+'a')(res1)
+    res1 = Activation('relu')(res1)
 
-    x = Conv2D(filters3, (1, 1), name=conv_name_base + '2c')(x)
-    x = BatchNormalization(name=bn_name_base + '2c')(x)
+    res1 = Conv2D(filter, (3, 3), padding='SAME', name=name+'b')(res1)
+    res1 = BatchNormalization(name=bnName+'b')(res1)
+    res1 = Activation('relu')(res1)
 
-    x = layers.add([x, input_tensor])
-    x = Activation('relu')(x)
-    return x
+    res1 = Conv2D(filter * 4, (1, 1), padding='SAME', name=name+'c')(res1)
+    res1 = BatchNormalization(name=bnName+'c')(res1)
 
+    res2 = Conv2D(filter * 4, (1, 1), strides=step, padding='SAME', name=name+'2a')(input)
+    res2 = BatchNormalization(name=bnName + '2a')(res2)
 
-def conv_block(input_tensor, kernel_size, filters, stage, block, strides=(2, 2)):
+    res = layers.add([res1, res2])
+    res = Activation('relu')(res)
+    return res
 
-    filters1, filters2, filters3 = filters
+# 纵向学习
+def _IdentityBlock(input, debugInfo):
+    channel = int(input.shape[3])
+    name = 'identity' + str(debugInfo.stage) + '_branch' + debugInfo.block
+    bnName = 'bn' + str(debugInfo.stage) + '_branch' + debugInfo.block
 
-    conv_name_base = 'res' + str(stage) + block + '_branch'
-    bn_name_base = 'bn' + str(stage) + block + '_branch'
+    res1 = Conv2D(channel // 4, (1, 1), padding='SAME', name=name + 'a')(input)
+    res1 = BatchNormalization(name=bnName + 'a')(res1)
+    res1 = Activation('relu')(res1)
 
-    x = Conv2D(filters1, (1, 1), strides=strides,
-               name=conv_name_base + '2a')(input_tensor)
-    x = BatchNormalization(name=bn_name_base + '2a')(x)
-    x = Activation('relu')(x)
+    res1 = Conv2D(channel // 4, (3, 3), padding='SAME', name=name + 'b')(res1)
+    res1 = BatchNormalization(name=bnName + 'b')(res1)
+    res1 = Activation('relu')(res1)
 
-    x = Conv2D(filters2, kernel_size, padding='same',
-               name=conv_name_base + '2b')(x)
-    x = BatchNormalization(name=bn_name_base + '2b')(x)
-    x = Activation('relu')(x)
+    res1 = Conv2D(channel, (1, 1), padding='SAME', name=name + 'c')(res1)
+    res1 = BatchNormalization(name=bnName + 'c')(res1)
 
-    x = Conv2D(filters3, (1, 1), name=conv_name_base + '2c')(x)
-    x = BatchNormalization(name=bn_name_base + '2c')(x)
+    res = layers.add([res1, input])
+    res = Activation('relu')(res)
+    return res
 
-    shortcut = Conv2D(filters3, (1, 1), strides=strides,
-                      name=conv_name_base + '1')(input_tensor)
-    shortcut = BatchNormalization(name=bn_name_base + '1')(shortcut)
+def ResNet50(inputEle):
+    # 初始化
+    res = ZeroPadding2D((3, 3))(inputEle)
 
-    x = layers.add([x, shortcut])
-    x = Activation('relu')(x)
-    return x
+    # Stage 0
+    # (224, 224, 3)
+    res = Conv2D(64, (7, 7), strides=2, name='conv0_branch1')(res)
+    res = BatchNormalization(name='bn_bantch1')(res)
+    res = Activation('relu')(res)
+    res = MaxPooling2D((3, 3), strides=2)(res)
 
+    # Stage 1
+    # 1 (56, 56, 64)
+    res = _ConvBlock(res, 64, 1, DebugInfo(1, '1'))
+    # 2 (56, 56, 256)
+    res = _IdentityBlock(res, DebugInfo(1, '2'))
+    # 3 (56, 56, 256)
+    res = _IdentityBlock(res, DebugInfo(1, '3'))
 
-def ResNet50(inputs):
+    # Stage 2
+    # 1 (56, 56, 256)
+    res = _ConvBlock(res, 128, (2, 2), DebugInfo(2, '1'))
+    # 2 (28, 28, 512)
+    res = _IdentityBlock(res, DebugInfo(2, '2'))
+    # 3 (28, 28, 512)
+    res = _IdentityBlock(res, DebugInfo(2, '3'))
+    # 4 (28, 28, 512)
+    res = _IdentityBlock(res, DebugInfo(2, '4'))
 
-    img_input = inputs
+    # Stage 3
+    # 1 (28, 28, 512)
+    res = _ConvBlock(res, 256, (2, 2), DebugInfo(3, '1'))
+    # 2 (14, 14, 1024)
+    res = _IdentityBlock(res, DebugInfo(3, '2'))
+    # 3 (14, 14, 1024)
+    res = _IdentityBlock(res, DebugInfo(3, '3'))
+    # 4 (14, 14, 1024)
+    res = _IdentityBlock(res, DebugInfo(3, '4'))
+    # 5 (14, 14, 1024)
+    res = _IdentityBlock(res, DebugInfo(3, '5'))
+    # 6 (14, 14, 1024)
+    res = _IdentityBlock(res, DebugInfo(3, '6'))
 
-    x = ZeroPadding2D((3, 3))(img_input)
-    x = Conv2D(64, (7, 7), strides=(2, 2), name='conv1')(x)
-    x = BatchNormalization(name='bn_conv1')(x)
-    x = Activation('relu')(x)
+    # Stage 4
+    # 1 (14, 14, 1024)
+    res = _ConvBlock(res, 512, (2, 2), DebugInfo(4, '1'))
+    # 2 (7, 7, 2048)
+    res = _IdentityBlock(res, DebugInfo(4, '2'))
+    # 3 (7, 7, 2048)
+    res = _IdentityBlock(res, DebugInfo(4, '3'))
 
-    x = MaxPooling2D((3, 3), strides=(2, 2), padding="same")(x)
-
-    x = conv_block(x, 3, [64, 64, 256], stage=2, block='a', strides=(1, 1))
-    x = identity_block(x, 3, [64, 64, 256], stage=2, block='b')
-    x = identity_block(x, 3, [64, 64, 256], stage=2, block='c')
-
-
-    x = conv_block(x, 3, [128, 128, 512], stage=3, block='a')
-    x = identity_block(x, 3, [128, 128, 512], stage=3, block='b')
-    x = identity_block(x, 3, [128, 128, 512], stage=3, block='c')
-    x = identity_block(x, 3, [128, 128, 512], stage=3, block='d')
-
-    x = conv_block(x, 3, [256, 256, 1024], stage=4, block='a')
-    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='b')
-    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='c')
-    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='d')
-    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='e')
-    x = identity_block(x, 3, [256, 256, 1024], stage=4, block='f')
-
-    return x
-
-def identity_block_td(input_tensor, kernel_size, filters, stage, block, trainable=True):
-    nb_filter1, nb_filter2, nb_filter3 = filters
-    #旧版本使用image_dim_ordering()
-    if K.image_data_format() == 'channels_last':
-        bn_axis = 3
-    else:
-        bn_axis = 1
-
-    conv_name_base = 'res' + str(stage) + block + '_branch'
-    bn_name_base = 'bn' + str(stage) + block + '_branch'
-
-    x = TimeDistributed(Conv2D(nb_filter1, (1, 1), trainable=trainable, kernel_initializer='normal'), name=conv_name_base + '2a')(input_tensor)
-    x = TimeDistributed(BatchNormalization(axis=bn_axis), name=bn_name_base + '2a')(x)
-    x = Activation('relu')(x)
-
-    x = TimeDistributed(Conv2D(nb_filter2, (kernel_size, kernel_size), trainable=trainable, kernel_initializer='normal',padding='same'), name=conv_name_base + '2b')(x)
-    x = TimeDistributed(BatchNormalization(axis=bn_axis), name=bn_name_base + '2b')(x)
-    x = Activation('relu')(x)
-
-    x = TimeDistributed(Conv2D(nb_filter3, (1, 1), trainable=trainable, kernel_initializer='normal'), name=conv_name_base + '2c')(x)
-    x = TimeDistributed(BatchNormalization(axis=bn_axis), name=bn_name_base + '2c')(x)
-
-    x = Add()([x, input_tensor])
-    x = Activation('relu')(x)
-
-    return x
+    return res
 
 def conv_block_td(input_tensor, kernel_size, filters, stage, block, input_shape, strides=(2, 2), trainable=True):
     nb_filter1, nb_filter2, nb_filter3 = filters
@@ -157,14 +139,41 @@ def conv_block_td(input_tensor, kernel_size, filters, stage, block, input_shape,
     x = Activation('relu')(x)
     return x
 
+def identity_block_td(input_tensor, kernel_size, filters, stage, block, trainable=True):
+    nb_filter1, nb_filter2, nb_filter3 = filters
+    #旧版本使用image_dim_ordering()
+    if K.image_data_format() == 'channels_last':
+        bn_axis = 3
+    else:
+        bn_axis = 1
+
+    conv_name_base = 'res' + str(stage) + block + '_branch'
+    bn_name_base = 'bn' + str(stage) + block + '_branch'
+
+    x = TimeDistributed(Conv2D(nb_filter1, (1, 1), trainable=trainable, kernel_initializer='normal'), name=conv_name_base + '2a')(input_tensor)
+    x = TimeDistributed(BatchNormalization(axis=bn_axis), name=bn_name_base + '2a')(x)
+    x = Activation('relu')(x)
+
+    x = TimeDistributed(Conv2D(nb_filter2, (kernel_size, kernel_size), trainable=trainable, kernel_initializer='normal',padding='same'), name=conv_name_base + '2b')(x)
+    x = TimeDistributed(BatchNormalization(axis=bn_axis), name=bn_name_base + '2b')(x)
+    x = Activation('relu')(x)
+
+    x = TimeDistributed(Conv2D(nb_filter3, (1, 1), trainable=trainable, kernel_initializer='normal'), name=conv_name_base + '2c')(x)
+    x = TimeDistributed(BatchNormalization(axis=bn_axis), name=bn_name_base + '2c')(x)
+
+    x = Add()([x, input_tensor])
+    x = Activation('relu')(x)
+
+    return x
 
 def classifier_layers(x, input_shape, trainable=False):
     x = conv_block_td(x, 3, [512, 512, 2048], stage=5, block='a', input_shape=input_shape, strides=(2, 2), trainable=trainable)
     x = identity_block_td(x, 3, [512, 512, 2048], stage=5, block='b', trainable=trainable)
     x = identity_block_td(x, 3, [512, 512, 2048], stage=5, block='c', trainable=trainable)
     x = TimeDistributed(AveragePooling2D((7, 7)), name='avg_pool')(x)
-
     return x
+
 if __name__ == "__main__":
-    inputs = Input(shape=(600, 600, 3))
+    inputs = Input(shape=INPUT_SHAPE)
     model = ResNet50(inputs)
+    # classifier_layers(inputs)
