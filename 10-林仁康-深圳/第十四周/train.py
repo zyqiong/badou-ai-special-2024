@@ -23,8 +23,15 @@ def write_log(callback, names, logs, batch_no):
         callback.writer.add_summary(summary, batch_no)
         callback.writer.flush()
 
+# 使用 NPU 加速
+def _InitByARMNPU():
+    sess = tf.compat.v1.Session(config=tf.compat.v1.ConfigProto(log_device_placement=True))
+    keras.backend.set_session(sess)
+
 if __name__ == "__main__":
+    _InitByARMNPU()
     config = Config()
+
     NUM_CLASSES = 21
     EPOCH = 100
     EPOCH_LENGTH = 2000
@@ -53,7 +60,7 @@ if __name__ == "__main__":
     callback.set_model(model_all)
     
     model_rpn.compile(loss={
-                'regression'    : smooth_l1(),
+                'regression': smooth_l1(),
                 'classification': cls_loss()
             },optimizer=keras.optimizers.Adam(lr=1e-5)
     )

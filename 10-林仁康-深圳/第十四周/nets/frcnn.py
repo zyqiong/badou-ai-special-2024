@@ -18,8 +18,18 @@ def get_classifier(base_layers, input_rois, num_rois, nb_classes=21, trainable=F
     out_roi_pool = RoiPoolingConv(pooling_regions, num_rois)([base_layers, input_rois])
     out = classifier_layers(out_roi_pool, input_shape, trainable)
     out = TimeDistributed(Flatten())(out)
-    out_class = TimeDistributed(Dense(nb_classes, activation='softmax', kernel_initializer='zero'), name='dense_class_{}'.format(nb_classes))(out)
-    out_regr = TimeDistributed(Dense(4 * (nb_classes-1), activation='linear', kernel_initializer='zero'), name='dense_regress_{}'.format(nb_classes))(out)
+    channel = int(out.shape[2])
+
+    # 全连接
+    out = TimeDistributed(Dense(channel, activation='relu', kernel_initializer='zero'),
+                                name='dense_1')(out)
+    out = TimeDistributed(Dense(channel, activation='relu', kernel_initializer='zero'),
+                                name='dense_2_')(out)
+    # 分类
+    out_class = TimeDistributed(Dense(nb_classes, activation='softmax', kernel_initializer='zero'),
+                                name='dense_class_{}'.format(nb_classes))(out)
+    out_regr = TimeDistributed(Dense(4 * (nb_classes - 1), activation='linear', kernel_initializer='zero'),
+                               name='dense_regress_{}'.format(nb_classes))(out)
     return [out_class, out_regr]
 
 def get_model(config,num_classes):

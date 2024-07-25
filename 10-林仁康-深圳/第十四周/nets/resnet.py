@@ -101,13 +101,13 @@ def ResNet50(inputEle):
     # 6 (14, 14, 1024)
     res = _IdentityBlock(res, DebugInfo(3, '6'))
 
-    # Stage 4
-    # 1 (14, 14, 1024)
-    res = _ConvBlock(res, 512, (2, 2), DebugInfo(4, '1'))
-    # 2 (7, 7, 2048)
-    res = _IdentityBlock(res, DebugInfo(4, '2'))
-    # 3 (7, 7, 2048)
-    res = _IdentityBlock(res, DebugInfo(4, '3'))
+    # # Stage 4
+    # # 1 (14, 14, 1024)
+    # res = _ConvBlock(res, 512, (2, 2), DebugInfo(4, '1'))
+    # # 2 (7, 7, 2048)
+    # res = _IdentityBlock(res, DebugInfo(4, '2'))
+    # # 3 (7, 7, 2048)
+    # res = _IdentityBlock(res, DebugInfo(4, '3'))
 
     return res
 

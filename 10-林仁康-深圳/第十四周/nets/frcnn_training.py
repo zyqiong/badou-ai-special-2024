@@ -18,23 +18,20 @@ def rand(a=0, b=1):
 
 def cls_loss(ratio=3):
     def _cls_loss(y_true, y_pred):
-        # y_true [batch_size, num_anchor, num_classes+1]
-        # y_pred [batch_size, num_anchor, num_classes]
-        labels         = y_true
-        anchor_state   = y_true[:,:,-1] # -1 是需要忽略的, 0 是背景, 1 是存在目标
+        labels = y_true
+        anchor_state = y_true[:,:,-1] # -1 是需要忽略的, 0 是背景, 1 是存在目标
         classification = y_pred
 
-        
         # 找出存在目标的先验框
-        indices_for_object        = tf.where(keras.backend.equal(anchor_state, 1))
-        labels_for_object         = tf.gather_nd(labels, indices_for_object)
+        indices_for_object = tf.where(keras.backend.equal(anchor_state, 1))
+        labels_for_object = tf.gather_nd(labels, indices_for_object)
         classification_for_object = tf.gather_nd(classification, indices_for_object)
 
         cls_loss_for_object = keras.backend.binary_crossentropy(labels_for_object, classification_for_object)
 
         # 找出实际上为背景的先验框
-        indices_for_back        = tf.where(keras.backend.equal(anchor_state, 0))
-        labels_for_back         = tf.gather_nd(labels, indices_for_back)
+        indices_for_back = tf.where(keras.backend.equal(anchor_state, 0))
+        labels_for_back = tf.gather_nd(labels, indices_for_back)
         classification_for_back = tf.gather_nd(classification, indices_for_back)
 
         # 计算每一个先验框应该有的权重
@@ -63,15 +60,13 @@ def smooth_l1(sigma=1.0):
     sigma_squared = sigma ** 2
 
     def _smooth_l1(y_true, y_pred):
-        # y_true [batch_size, num_anchor, 4+1]
-        # y_pred [batch_size, num_anchor, 4]
-        regression        = y_pred
+        regression = y_pred
         regression_target = y_true[:, :, :-1]
-        anchor_state      = y_true[:, :, -1]
+        anchor_state = y_true[:, :, -1]
 
         # 找到正样本
-        indices           = tf.where(keras.backend.equal(anchor_state, 1))
-        regression        = tf.gather_nd(regression, indices)
+        indices = tf.where(keras.backend.equal(anchor_state, 1))
+        regression = tf.gather_nd(regression, indices)
         regression_target = tf.gather_nd(regression_target, indices)
 
         # 计算 smooth L1 loss
@@ -88,11 +83,9 @@ def smooth_l1(sigma=1.0):
         normalizer = keras.backend.maximum(1, keras.backend.shape(indices)[0])
         normalizer = keras.backend.cast(normalizer, dtype=keras.backend.floatx())
         loss = keras.backend.sum(regression_loss) / normalizer
-
         return loss
 
     return _smooth_l1
-
 
 def class_loss_regr(num_classes):
     epsilon = 1e-4
@@ -133,8 +126,7 @@ def get_img_output_length(width, height):
     return get_output_length(width), get_output_length(height) 
     
 class Generator(object):
-    def __init__(self, bbox_util,
-                 train_lines, num_classes,solid,solid_shape=[600,600]):
+    def __init__(self, bbox_util,train_lines, num_classes,solid,solid_shape=[600,600]):
         self.bbox_util = bbox_util
         self.train_lines = train_lines
         self.train_batches = len(train_lines)
@@ -211,7 +203,6 @@ class Generator(object):
         else:
             return image_data, []
 
-    
     def generate(self):
         while True:
             shuffle(self.train_lines)
