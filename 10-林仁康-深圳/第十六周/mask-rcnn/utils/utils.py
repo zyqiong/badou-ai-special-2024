@@ -694,9 +694,9 @@ def mold_inputs(config, images):
 
 def unmold_detections(detections, mrcnn_mask, original_image_shape,
                         image_shape, window):
-    # 返回 detections 第 5 列为 0 的下标
+    # 过滤出所有 boxes 全零的下标
     zero_ix = np.where(detections[:, 4] == 0)[0]
-    # zero_ix.shape 输出 (82,)
+    # 获取第一个全零下标，此数值表示为非零 boxes 的总数
     N = zero_ix[0] if zero_ix.shape[0] > 0 else detections.shape[0]
 
     boxes = detections[:N, :4]

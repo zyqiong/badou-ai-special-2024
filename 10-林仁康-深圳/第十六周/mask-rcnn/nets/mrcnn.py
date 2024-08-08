@@ -30,6 +30,7 @@ def rpn_graph(feature_map, anchors_per_location):
     # 代表这个先验框对应的类
     rpn_class_logits = Reshape([-1,2])(x)
 
+    # 代表候选区域包含目标物体的概率
     rpn_probs = Activation(
         "softmax", name="rpn_class_xxx")(rpn_class_logits)
     
@@ -85,6 +86,7 @@ def fpn_classifier_graph(rois, feature_maps, image_meta,
     # 这个的预测结果代表这个先验框内部的物体的种类
     mrcnn_class_logits = TimeDistributed(Dense(num_classes),
                                             name='mrcnn_class_logits')(shared)
+    # 预测种类的准确度
     mrcnn_probs = TimeDistributed(Activation("softmax"),
                                      name="mrcnn_class")(mrcnn_class_logits)
 
@@ -95,6 +97,7 @@ def fpn_classifier_graph(rois, feature_maps, image_meta,
     x = TimeDistributed(Dense(num_classes * 4, activation='linear'),
                            name='mrcnn_bbox_fc')(shared)
     # Reshape to [batch, num_rois, NUM_CLASSES, (dy, dx, log(dh), log(dw))]
+    # (?, 1000, 324) -> (?, ?, 81, 4)
     mrcnn_bbox = Reshape((-1, num_classes, 4), name="mrcnn_bbox")(x)
 
     return mrcnn_class_logits, mrcnn_probs, mrcnn_bbox
@@ -160,7 +163,6 @@ def get_predict_model(config):
     # 输入进来的先验框
     input_anchors = Input(shape=[None, 4], name="input_anchors")
 
-
     # 获得Resnet里的压缩程度不同的一些层
     _, C2, C3, C4, C5 = get_resnet(input_image, stage5=True, train_bn=config.TRAIN_BN)
 
@@ -215,6 +217,7 @@ def get_predict_model(config):
         rpn_class.append(classes)
         rpn_bbox.append(bbox)
 
+    # 将列表中的元素，按列方向拼接
     rpn_class_logits = Concatenate(axis=1,name="rpn_class_logits")(rpn_class_logits)
     rpn_class = Concatenate(axis=1,name="rpn_class")(rpn_class)
     rpn_bbox = Concatenate(axis=1,name="rpn_bbox")(rpn_bbox)
@@ -226,25 +229,24 @@ def get_predict_model(config):
     proposal_count = config.POST_NMS_ROIS_INFERENCE
 
     # Batch_size, proposal_count, 4
-    # 对先验框进行解码
+    # 对先验框进行解码（特征与线框进行合并）
     rpn_rois = ProposalLayer(
             proposal_count=proposal_count,
             nms_threshold=config.RPN_NMS_THRESHOLD,
             name="ROI",
             config=config)([rpn_class, rpn_bbox, anchors])
 
-    # 获得classifier的结果
+    # 获得classifier的结果（分类与得到 boxes）
     mrcnn_class_logits, mrcnn_class, mrcnn_bbox =\
         fpn_classifier_graph(rpn_rois, mrcnn_feature_maps, input_image_meta,
                                 config.POOL_SIZE, config.NUM_CLASSES,
                                 train_bn=config.TRAIN_BN,
                                 fc_layers_size=config.FPN_CLASSIF_FC_LAYERS_SIZE)
-    
+    # 调整边框，废除重叠等边框
     detections = DetectionLayer(config, name="mrcnn_detection")(
                     [rpn_rois, mrcnn_class, mrcnn_bbox, input_image_meta])
-                
-                
     detection_boxes = Lambda(lambda x: x[..., :4])(detections)
+
     # 获得mask的结果
     mrcnn_mask = build_fpn_mask_graph(detection_boxes, mrcnn_feature_maps,
                                     input_image_meta,

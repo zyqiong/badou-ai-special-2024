@@ -52,22 +52,26 @@ class ProposalLayer(Layer):
         self.config = config
         self.proposal_count = proposal_count
         self.nms_threshold = nms_threshold
+
+    # 继承 tf.keras.layers.Layer，创建自定义图层时候，调用 call 函数
     # [rpn_class, rpn_bbox, anchors]
     def call(self, inputs):
 
         # 代表这个先验框内部是否有物体[batch, num_rois, 1]
+        # (?, ?, 2) -> (?, ?), 获取 第 1 通道的数值（有效通道）
         scores = inputs[0][:, :, 1]
 
         # 代表这个先验框的调整参数[batch, num_rois, 4]
         deltas = inputs[1]
 
         # [0.1 0.1 0.2 0.2]，改变数量级
+        # 升维 (4, )->(1, 1, 4)
         deltas = deltas * np.reshape(self.config.RPN_BBOX_STD_DEV, [1, 1, 4])
 
         # Anchors
         anchors = inputs[2]
 
-        # 筛选出得分前6000个的框
+        # 筛选出得分前6000个的框（分类结果最高的前6000个）
         pre_nms_limit = tf.minimum(self.config.PRE_NMS_LIMIT, tf.shape(anchors)[1])
         # 获得这些框的索引
         ix = tf.nn.top_k(scores, pre_nms_limit, sorted=True,
@@ -99,8 +103,7 @@ class ProposalLayer(Layer):
                                   self.config.IMAGES_PER_GPU,
                                   names=["refined_anchors_clipped"])
 
-
-        # 非极大抑制
+        # 非极大抑制（根据置信度保留，分类识别较高的图像）
         def nms(boxes, scores):
             indices = tf.image.non_max_suppression(
                 boxes, scores, self.proposal_count,
@@ -128,6 +131,7 @@ class ProposalLayer(Layer):
 #----------------------------------------------------------#
 
 def log2_graph(x):
+    # 以 e 为底数
     return tf.log(x) / tf.log(2.0)
 
 def parse_image_meta_graph(meta):
@@ -169,13 +173,24 @@ class PyramidROIAlign(Layer):
         w = x2 - x1
 
         # 获得输入进来的图像的大小
+        # 这里得到原图的尺寸，计算原图的面积
         image_shape = parse_image_meta_graph(image_meta)['image_shape'][0]
         
         # 通过建议框的大小找到这个建议框属于哪个特征层
+        # 计算原图面积
         image_area = tf.cast(image_shape[0] * image_shape[1], tf.float32)
+        # 分两步计算每个 ROI 框需要在哪个层的特征图中进行 pooling
+        k0 = 5
+        k = k0 - 1
         roi_level = log2_graph(tf.sqrt(h * w) / (224.0 / tf.sqrt(image_area)))
-        roi_level = tf.minimum(5, tf.maximum(
-            2, 4 + tf.cast(tf.round(roi_level), tf.int32)))
+        roi_level = tf.minimum(k0, tf.maximum(
+            2, k + tf.cast(tf.round(roi_level), tf.int32)))
+        # 论文中计算方式：
+        # 224 是ImageNet的标准输入，k0是基准值，设置为5，代表P5层的输出（原图大小就用P5层），
+        # w和h是ROI区域的长和宽，image_area是输入图片的长乘以宽，即输入图片的面积，假设ROI是112 * 112 的大小，
+        # 那么k = k0 - 1 = 5 - 1 = 4，意味着该ROI应该使用P4的特征层。k值会做取整处理，防止结果不是整数。
+        # 以上替换为--->roi_level = min(k0, max(2, k + log2(sqrt(w * h) / (224 / sqrt(image_area)))))
+
         # batch_size, box_num
         roi_level = tf.squeeze(roi_level, 2)
 
@@ -185,17 +200,33 @@ class PyramidROIAlign(Layer):
         # 分别在P2-P5中进行截取
         for i, level in enumerate(range(2, 6)):
             # 找到每个特征层对应box
+            # 先找出需要在第 level 层计算ROI
+            # shape=(?, 2)
             ix = tf.where(tf.equal(roi_level, level))
+            # 根据 ix 索引 boxes 的张量
             level_boxes = tf.gather_nd(boxes, ix)
+
+            # Box indicies for crop_and_resize.
             box_to_level.append(ix)
 
             # 获得这些box所属的图片
+            # Box indicies for crop_and_resize.
             box_indices = tf.cast(ix[:, 0], tf.int32)
 
             # 停止梯度下降
             level_boxes = tf.stop_gradient(level_boxes)
             box_indices = tf.stop_gradient(box_indices)
 
+            # Crop and Resize
+            # From Mask R-CNN paper: "We sample four regular locations, so
+            # that we can evaluate either max or average pooling. In fact,
+            # interpolating only a single value at each bin center (without
+            # pooling) is nearly as effective."
+            #
+            # Here we use the simplified approach of a single value per bin,
+            # which is how it's done in tf.crop_and_resize()
+            # Result: [batch * num_boxes, pool_height, pool_width, channels]
+            # 使用 tf.image.crop_and_resize 进行 ROI pooling
             # Result: [batch * num_boxes, pool_height, pool_width, channels]
             pooled.append(tf.image.crop_and_resize(
                 feature_maps[i], level_boxes, box_indices, self.pool_shape,
@@ -251,7 +282,7 @@ def refine_detections_graph(rois, probs, deltas, window, config):
     """
     # 找到得分最高的类
     class_ids = tf.argmax(probs, axis=1, output_type=tf.int32)
-    # 序号+类
+    # 序号+类（根据列，拼接序号和类）
     indices = tf.stack([tf.range(probs.shape[0]), class_ids], axis=1)
     # 取出成绩
     class_scores = tf.gather_nd(probs, indices)

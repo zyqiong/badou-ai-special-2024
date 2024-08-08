@@ -47,6 +47,7 @@ class MASK_RCNN(object):
         self.sess = K.get_session()
         self.config = self._get_config()
         self.generate()
+
     #---------------------------------------------------#
     #   获得所有的分类
     #---------------------------------------------------#
